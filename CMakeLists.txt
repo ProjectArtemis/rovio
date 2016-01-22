@@ -23,6 +23,9 @@ endif()
 find_package(Eigen3 REQUIRED)
 include_directories(${EIGEN3_INCLUDE_DIR})
 
+find_package(OpenCV REQUIRED)
+include_directories(${OpenCV_INCLUDE_DIRS})
+
 if(MAKE_SCENE)
 	message(STATUS "Building ROVIO with openGL Scene Visualization")
 	set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DMAKE_SCENE=1")
@@ -70,9 +73,9 @@ find_package(catkin REQUIRED COMPONENTS
 )
 
 catkin_package(
-	INCLUDE_DIRS include ${catkin_INCLUDE_DIRS}
+    INCLUDE_DIRS include ${catkin_INCLUDE_DIRS}
     LIBRARIES ${PROJECT_NAME}
-	CATKIN_DEPENDS
+    CATKIN_DEPENDS
 	lightweight_filtering
   	kindr
 	roscpp
@@ -85,6 +88,7 @@ catkin_package(
 	std_msgs
 	tf
 	rosbag
+    DEPENDS OpenCV
 )
 
 include_directories(include ${catkin_INCLUDE_DIRS} ${YamlCpp_INCLUDE_DIRS})
