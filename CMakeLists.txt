@@ -60,6 +60,7 @@ find_package(catkin REQUIRED COMPONENTS
 	roscpp
 	roslib
 	cv_bridge
+	image_transport
 	message_generation
 	nav_msgs
 	geometry_msgs
@@ -78,6 +79,7 @@ catkin_package(
 	roscpp
 	roslib
 	cv_bridge
+	image_transport
 	message_runtime
 	nav_msgs
 	geometry_msgs
