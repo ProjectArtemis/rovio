@@ -40,6 +40,7 @@
 #include <sensor_msgs/PointCloud2.h>
 #include <nav_msgs/Odometry.h>
 #include <cv_bridge/cv_bridge.h>
+#include <image_transport/image_transport.h>
 #include "rovio/RovioFilter.hpp"
 #include <tf/transform_broadcaster.h>
 #include <visualization_msgs/Marker.h>
@@ -85,15 +86,18 @@ class RovioNode{
   ros::Publisher pubOdometry_;
   ros::Publisher pubTransform_;
   tf::TransformBroadcaster tb_;
+  image_transport::ImageTransport it_;
   ros::Publisher pubPcl_;            /**<Publisher: Ros point cloud, visualizing the landmarks.*/
   ros::Publisher pubURays_;          /**<Publisher: Ros line marker, indicating the depth uncertainty of a landmark.*/
   ros::Publisher pubExtrinsics_[mtState::nMax_];
   ros::Publisher pubImuBias_;
+  image_transport::Publisher pubTrackerViz_[mtState::nCam_];
 
   // Ros Messages
   geometry_msgs::TransformStamped transformMsg_;
   nav_msgs::Odometry odometryMsg_;
   geometry_msgs::PoseWithCovarianceStamped extrinsicsMsg_[mtState::nMax_];
+  sensor_msgs::Image trackerMsg_[mtState::nCam_];
   sensor_msgs::PointCloud2 pclMsg_;
   visualization_msgs::Marker markerMsg_;
   sensor_msgs::Imu imuBiasMsg_;
@@ -123,7 +127,7 @@ class RovioNode{
   /** \brief Constructor
    */
   RovioNode(ros::NodeHandle& nh, ros::NodeHandle& nh_private, std::shared_ptr<mtFilter> mpFilter)
-      : nh_(nh), nh_private_(nh_private), mpFilter_(mpFilter), transformFeatureOutputCT_(&mpFilter->multiCamera_),
+      : nh_(nh), nh_private_(nh_private), mpFilter_(mpFilter), it_(nh), transformFeatureOutputCT_(&mpFilter->multiCamera_),
         cameraOutputCov_((int)(mtOutput::D_),(int)(mtOutput::D_)), featureOutputCov_((int)(FeatureOutput::D_),(int)(FeatureOutput::D_)),
         featureOutputReadableCov_((int)(FeatureOutputReadable::D_),(int)(FeatureOutputReadable::D_)){
     #ifndef NDEBUG
@@ -144,9 +148,12 @@ class RovioNode{
     pubOdometry_ = nh_.advertise<nav_msgs::Odometry>("rovio/odometry", 1);
     pubPcl_ = nh_.advertise<sensor_msgs::PointCloud2>("rovio/pcl", 1);
     pubURays_ = nh_.advertise<visualization_msgs::Marker>("rovio/urays", 1 );
+    
     for(int camID=0;camID<mtState::nCam_;camID++){
       pubExtrinsics_[camID] = nh_.advertise<geometry_msgs::PoseWithCovarianceStamped>("rovio/extrinsics" + std::to_string(camID), 1 );
+      pubTrackerViz_[camID] = it_.advertise("rovio/visualisation/tracker" + std::to_string(camID), 1);
     }
+    
     pubImuBias_ = nh_.advertise<sensor_msgs::Imu>("rovio/imu_biases", 1 );
 
     // Handle coordinate frame naming
@@ -584,6 +591,20 @@ class RovioNode{
             }
           }
           pubImuBias_.publish(imuBiasMsg_);
+        }
+        
+        // Tracking visualisation
+        for(int camID=0;camID<mtState::nCam_;camID++){
+          if(pubTrackerViz_[camID].getNumSubscribers() > 0){
+            cv_bridge::CvImage img_msg;
+            img_msg.header.seq = msgSeq_;
+            img_msg.header.stamp = ros::Time(mpFilter_->safe_.t_);
+            img_msg.header.frame_id = "camera" + std::to_string(camID);
+            img_msg.image = mpFilter_->safe_.img_[camID];
+            img_msg.encoding = sensor_msgs::image_encodings::BGR8; // XXX
+            trackerMsg_[camID] = *img_msg.toImageMsg();
+            pubTrackerViz_[camID].publish(trackerMsg_[camID]);
+          }
         }
 
         // PointCloud2 message.
