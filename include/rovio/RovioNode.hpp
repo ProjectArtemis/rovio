@@ -39,6 +39,7 @@
 #include <sensor_msgs/image_encodings.h>
 #include <sensor_msgs/PointCloud2.h>
 #include <nav_msgs/Odometry.h>
+#include <nav_msgs/Path.h>
 #include <cv_bridge/cv_bridge.h>
 #include "rovio/RovioFilter.hpp"
 #include <tf/transform_broadcaster.h>
@@ -83,6 +84,7 @@ class RovioNode{
   ros::Subscriber subImg1_;
   ros::Subscriber subGroundtruth_;
   ros::Publisher pubOdometry_;
+  ros::Publisher pubPath_;
   ros::Publisher pubTransform_;
   tf::TransformBroadcaster tb_;
   ros::Publisher pubPcl_;            /**<Publisher: Ros point cloud, visualizing the landmarks.*/
@@ -93,6 +95,7 @@ class RovioNode{
   // Ros Messages
   geometry_msgs::TransformStamped transformMsg_;
   nav_msgs::Odometry odometryMsg_;
+  nav_msgs::Path pathMsg_;
   geometry_msgs::PoseWithCovarianceStamped extrinsicsMsg_[mtState::nMax_];
   sensor_msgs::PointCloud2 pclMsg_;
   visualization_msgs::Marker markerMsg_;
@@ -142,6 +145,7 @@ class RovioNode{
     // Advertise topics
     pubTransform_ = nh_.advertise<geometry_msgs::TransformStamped>("rovio/transform", 1);
     pubOdometry_ = nh_.advertise<nav_msgs::Odometry>("rovio/odometry", 1);
+    pubPath_ = nh_.advertise<nav_msgs::Path>("rovio/trajectory", 1);
     pubPcl_ = nh_.advertise<sensor_msgs::PointCloud2>("rovio/pcl", 1);
     pubURays_ = nh_.advertise<visualization_msgs::Marker>("rovio/urays", 1 );
     for(int camID=0;camID<mtState::nCam_;camID++){
@@ -164,6 +168,8 @@ class RovioNode{
     transformMsg_.child_frame_id = imu_frame_;
     odometryMsg_.header.frame_id = world_frame_;
     odometryMsg_.child_frame_id = imu_frame_;
+    pathMsg_.header.frame_id = world_frame_;
+    pathMsg_.poses.reserve(500);
     msgSeq_ = 1;
     for(int camID=0;camID<mtState::nCam_;camID++){
       extrinsicsMsg_[camID].header.frame_id = imu_frame_;
@@ -483,7 +489,28 @@ class RovioNode{
           tb_.sendTransform(tf_transform_CM);
         }
 
-        // Publish Odometry
+        // Publish Trajectory
+        if(pubPath_.getNumSubscribers() > 0){
+        	if (pathMsg_.poses.size() >= 200) {
+						pathMsg_.poses.erase(pathMsg_.poses.begin());
+					}
+					geometry_msgs::PoseStamped pose;
+					pose.header.stamp = ros::Time(mpFilter_->safe_.t_);
+					pose.header.frame_id = world_frame_;
+					pose.pose.position.x = imuOutput_.WrWB()(0);;
+					pose.pose.position.y = imuOutput_.WrWB()(1);
+					pose.pose.position.z = imuOutput_.WrWB()(2);
+					pose.pose.orientation.x = imuOutput_.qBW().x();
+					pose.pose.orientation.y = imuOutput_.qBW().y();
+					pose.pose.orientation.z = imuOutput_.qBW().z();
+					pose.pose.orientation.w = imuOutput_.qBW().w();
+
+					pathMsg_.header.stamp = ros::Time(mpFilter_->safe_.t_);
+					pathMsg_.header.frame_id = world_frame_;
+					pathMsg_.poses.push_back(pose);
+          pubPath_.publish(pathMsg_);
+        }
+        
         if(pubOdometry_.getNumSubscribers() > 0){
           // Compute covariance of output
           imuOutputCT_.transformCovMat(state,cov,imuOutputCov_);
