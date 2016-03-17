@@ -432,12 +432,12 @@ class RovioNode{
         ROS_INFO_STREAM(" == Filter Update: " << (t2-t1)/cv::getTickFrequency()*1000 << " ms for processing " << c1-c2 << " images, average: " << timing_T/timing_C);
       }
       if(mpFilter_->safe_.t_ > oldSafeTime){ // Publish only if something changed
-        for(int i=0;i<mtState::nCam_;i++){
-          if(!mpFilter_->safe_.img_[i].empty() && mpImgUpdate_->doFrameVisualisation_){
-            cv::imshow("Tracker" + std::to_string(i), mpFilter_->safe_.img_[i]);
-            cv::waitKey(3);
-          }
-        }
+//        for(int i=0;i<mtState::nCam_;i++){
+//          if(!mpFilter_->safe_.img_[i].empty() && mpImgUpdate_->doFrameVisualisation_){
+//            cv::imshow("Tracker" + std::to_string(i), mpFilter_->safe_.img_[i]);
+//            cv::waitKey(3);
+//          }
+//        }
         if(!mpFilter_->safe_.patchDrawing_.empty() && mpImgUpdate_->visualizePatches_){
           cv::imshow("Patches", mpFilter_->safe_.patchDrawing_);
           cv::waitKey(3);
@@ -499,22 +499,22 @@ class RovioNode{
         // Publish Trajectory
         if(pubPath_.getNumSubscribers() > 0){
         	if (pathMsg_.poses.size() >= 200) {
-						pathMsg_.poses.erase(pathMsg_.poses.begin());
-					}
-					geometry_msgs::PoseStamped pose;
-					pose.header.stamp = ros::Time(mpFilter_->safe_.t_);
-					pose.header.frame_id = world_frame_;
-					pose.pose.position.x = imuOutput_.WrWB()(0);;
-					pose.pose.position.y = imuOutput_.WrWB()(1);
-					pose.pose.position.z = imuOutput_.WrWB()(2);
-					pose.pose.orientation.x = imuOutput_.qBW().x();
-					pose.pose.orientation.y = imuOutput_.qBW().y();
-					pose.pose.orientation.z = imuOutput_.qBW().z();
-					pose.pose.orientation.w = imuOutput_.qBW().w();
+			      pathMsg_.poses.erase(pathMsg_.poses.begin());
+		      }
+		      geometry_msgs::PoseStamped pose;
+		      pose.header.stamp = ros::Time(mpFilter_->safe_.t_);
+		      pose.header.frame_id = world_frame_;
+		      pose.pose.position.x = imuOutput_.WrWB()(0);;
+		      pose.pose.position.y = imuOutput_.WrWB()(1);
+		      pose.pose.position.z = imuOutput_.WrWB()(2);
+		      pose.pose.orientation.x = imuOutput_.qBW().x();
+		      pose.pose.orientation.y = imuOutput_.qBW().y();
+		      pose.pose.orientation.z = imuOutput_.qBW().z();
+		      pose.pose.orientation.w = imuOutput_.qBW().w();
 
-					pathMsg_.header.stamp = ros::Time(mpFilter_->safe_.t_);
-					pathMsg_.header.frame_id = world_frame_;
-					pathMsg_.poses.push_back(pose);
+		      pathMsg_.header.stamp = ros::Time(mpFilter_->safe_.t_);
+		      pathMsg_.header.frame_id = world_frame_;
+	        pathMsg_.poses.push_back(pose);
           pubPath_.publish(pathMsg_);
         }
         
@@ -622,7 +622,7 @@ class RovioNode{
         
         // Tracking visualisation
         for(int camID=0;camID<mtState::nCam_;camID++){
-          if(pubTrackerViz_[camID].getNumSubscribers() > 0){
+          if(pubTrackerViz_[camID].getNumSubscribers() > 0 && !mpFilter_->safe_.img_[camID].empty()){
             cv_bridge::CvImage img_msg;
             img_msg.header.seq = msgSeq_;
             img_msg.header.stamp = ros::Time(mpFilter_->safe_.t_);
