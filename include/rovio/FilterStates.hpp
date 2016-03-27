@@ -595,6 +595,17 @@ class FilterState: public LWF::FilterState<State<nMax,nLevels,patchSize,nCam,nPo
       state_.qWM().setIdentity();
     }
   }
+  
+  void initWithAccelerometerAndMag(const V3D& fMeasInit, const QPD& yawMeasInit){
+     V3D unitZ(0,0,1);
+     if(fMeasInit.norm()>1e-6){
+       state_.qWM().setFromVectors(unitZ,fMeasInit);
+       state_.qWM() = yawMeasInit.inverted() * state_.qWM();
+       state_.qWM().fix();
+     } else {
+       state_.qWM().setIdentity();
+     }
+   }
 
   /** \brief Resets the covariance of a feature
    *
