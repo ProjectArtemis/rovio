@@ -84,6 +84,7 @@ class RovioNode{
   ros::Subscriber subImg0_;
   ros::Subscriber subImg1_;
   ros::Subscriber subGroundtruth_;
+  ros::Subscriber subMag_;
   ros::Publisher pubOdometry_;
   ros::Publisher pubPath_;
   ros::Publisher pubTransform_;
@@ -126,6 +127,10 @@ class RovioNode{
   std::string world_frame_;
   std::string camera_frame_;
   std::string imu_frame_;
+  
+  QPD initialGlobalOrientation_;
+  bool init_yaw_;
+  bool receivedInitialYaw_;
 
   /** \brief Constructor
    */
@@ -139,12 +144,15 @@ class RovioNode{
     mpImgUpdate_ = &std::get<0>(mpFilter_->mUpdates_);
     mpPoseUpdate_ = &std::get<1>(mpFilter_->mUpdates_);
     isInitialized_ = false;
+    init_yaw_ = false;
+    receivedInitialYaw_ = false;
 
     // Subscribe topics
     subImu_ = nh_.subscribe("imu0", 1000, &RovioNode::imuCallback,this);
     subImg0_ = nh_.subscribe("cam0/image_raw", 1000, &RovioNode::imgCallback0,this);
     subImg1_ = nh_.subscribe("cam1/image_raw", 1000, &RovioNode::imgCallback1,this);
     subGroundtruth_ = nh_.subscribe("pose", 1000, &RovioNode::groundtruthCallback,this);
+    subMag_ = nh_.subscribe("mag_imu", 1000, &RovioNode::magCallback,this);
 
     // Advertise topics
     pubTransform_ = nh_.advertise<geometry_msgs::TransformStamped>("rovio/transform", 1);
@@ -169,6 +177,8 @@ class RovioNode{
     nh_private_.param("world_frame", world_frame_, world_frame_);
     nh_private_.param("camera_frame", camera_frame_, camera_frame_);
     nh_private_.param("imu_frame", imu_frame_, imu_frame_);
+    
+    nh_private_.param("init_yaw", init_yaw_, init_yaw_);
 
     // Initialize messages
     transformMsg_.header.frame_id = world_frame_;
@@ -337,10 +347,21 @@ class RovioNode{
       mpFilter_->addPredictionMeas(predictionMeas_,imu_msg->header.stamp.toSec());
       updateAndPublish();
     } else {
-      mpFilter_->resetWithAccelerometer(predictionMeas_.template get<mtPredictionMeas::_acc>(),imu_msg->header.stamp.toSec());
-      std::cout << std::setprecision(12);
-      std::cout << "-- Filter: Initialized at t = " << imu_msg->header.stamp.toSec() << std::endl;
-      isInitialized_ = true;
+      if (init_yaw_) {
+         if (receivedInitialYaw_){
+           mpFilter_->resetWithAccelerometerAndMag(predictionMeas_.template get<mtPredictionMeas::_acc>(), initialGlobalOrientation_, imu_msg->header.stamp.toSec());
+           std::cout << std::setprecision(12);
+           std::cout << "-- Filter: Initialized at t = " << imu_msg->header.stamp.toSec() << std::endl;
+           std::cout << "Set initial global orientation" << std::endl;
+           isInitialized_ = true;
+         }
+       }
+       else {
+         mpFilter_->resetWithAccelerometer(predictionMeas_.template get<mtPredictionMeas::_acc>(),imu_msg->header.stamp.toSec());
+         std::cout << std::setprecision(12);
+         std::cout << "-- Filter: Initialized at t = " << imu_msg->header.stamp.toSec() << std::endl;
+         isInitialized_ = true;
+       }
     }
   }
 
@@ -410,6 +431,11 @@ class RovioNode{
       mpFilter_->template addUpdateMeas<1>(poseUpdateMeas_,transform->header.stamp.toSec()+mpPoseUpdate_->timeOffset_);
       updateAndPublish();
     }
+  }
+  
+  void magCallback(const sensor_msgs::Imu::ConstPtr& imu_msg){
+    initialGlobalOrientation_ = QPD(imu_msg->orientation.w, imu_msg->orientation.x, imu_msg->orientation.y, imu_msg->orientation.z);
+    receivedInitialYaw_ = true;
   }
 
   /** \brief Executes the update step of the filter and publishes the updated data.

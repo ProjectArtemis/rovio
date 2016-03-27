@@ -195,6 +195,11 @@ class RovioFilter:public LWF::FilterBase<ImuPrediction<FILTERSTATE>,ImgUpdate<FI
     init_.initWithAccelerometer(fMeasInit);
     reset(t);
   }
+  
+  void resetWithAccelerometerAndMag(const V3D& fMeasInit, const QPD& yawMeasInit, double t = 0.0){
+     init_.initWithAccelerometerAndMag(fMeasInit, yawMeasInit);
+     reset(t);
+   }
 
   /** \brief Sets the transformation between IMU and Camera.
    *
