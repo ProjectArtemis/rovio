@@ -14,6 +14,7 @@
   <buildtool_depend>catkin</buildtool_depend>
 
   <depend>cmake_modules</depend>
+  <depend>yaml_cpp_catkin</depend>
   <depend>lightweight_filtering</depend>
   <depend>kindr</depend>
   <depend>roscpp</depend>
