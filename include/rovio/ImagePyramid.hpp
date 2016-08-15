@@ -32,6 +32,7 @@
 #include <opencv2/features2d/features2d.hpp>
 #include <opencv2/imgproc/imgproc.hpp>
 #include <opencv2/highgui/highgui.hpp>
+#include <opencv2/gpu/gpu.hpp>
 #include "rovio/FeatureCoordinates.hpp"
 
 namespace rovio{
@@ -87,10 +88,21 @@ class ImagePyramid{
         centers_[i].x = centers_[i-1].x-pow(0.5,2-i)*(float)(imgs_[i-1].rows%2);
         centers_[i].y = centers_[i-1].y-pow(0.5,2-i)*(float)(imgs_[i-1].cols%2);
       } else {
-        cv::pyrDown(imgs_[i-1],imgs_[i],cv::Size(imgs_[i-1].cols/2, imgs_[i-1].rows/2));
+        
+    	cv::gpu::GpuMat frame_prev;
+        cv::gpu::GpuMat frame_next;
+        
+        frame_prev.upload(imgs_[i-1]);
+        cv::gpu::pyrDown(frame_prev, frame_next);
+        frame_next.download(imgs_[i]);
+        
         centers_[i].x = centers_[i-1].x-pow(0.5,2-i)*(float)((imgs_[i-1].rows%2)+1);
         centers_[i].y = centers_[i-1].y-pow(0.5,2-i)*(float)((imgs_[i-1].cols%2)+1);
+        
+        frame_prev.release();
+        frame_next.release();
       }
+      
     }
   }
 
@@ -142,6 +154,7 @@ class ImagePyramid{
       levelTranformCoordinates(FeatureCoordinates(cv::Point2f(it->pt.x, it->pt.y)),c,l,0);
       candidates.push_back(c);
     }
+    
   }
 };
 
