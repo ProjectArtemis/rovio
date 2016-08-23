@@ -60,8 +60,10 @@ class PoseUpdateMeas: public LWF::State<LWF::VectorElement<3>,LWF::QuaternionEle
  public:
   static constexpr unsigned int _pos = 0;
   static constexpr unsigned int _att = _pos+1;
+  M3D pos_cov_; // Will be used to scale the update covariance according to the measurement
   PoseUpdateMeas(){
     static_assert(_att+1==E_,"Error with indices");
+    pos_cov_.setIdentity();
   };
   virtual ~PoseUpdateMeas(){};
   inline V3D& pos(){
@@ -75,6 +77,12 @@ class PoseUpdateMeas: public LWF::State<LWF::VectorElement<3>,LWF::QuaternionEle
   }
   inline const QPD& att() const{
     return this->template get<_att>();
+  }
+  inline M3D& pos_cov(){
+    return pos_cov_;
+  }
+  inline const M3D& pos_cov() const{
+    return pos_cov_;
   }
 };
 class PoseUpdateNoise: public LWF::State<LWF::VectorElement<3>,LWF::VectorElement<3>>{
@@ -126,6 +134,7 @@ class PoseUpdate: public LWF::Update<PoseInnovation,FILTERSTATE,PoseUpdateMeas,P
   using Base::intRegister_;
   using Base::doubleRegister_;
   using Base::meas_;
+  using Base::updnoiP_; // This is the update covariance as used by the Kalman functions.
   typedef typename Base::mtState mtState;
   typedef typename Base::mtFilterState mtFilterState;
   typedef typename Base::mtInnovation mtInnovation;
@@ -138,13 +147,15 @@ class PoseUpdate: public LWF::Update<PoseInnovation,FILTERSTATE,PoseUpdateMeas,P
   V3D MrMV_;
   QPD qWI_;
   V3D IrIW_;
+  Eigen::MatrixXd defaultUpdnoiP_; // Configured update covariance, that will (optionally) be scaled by the measurement
   double timeOffset_;
   bool enablePosition_;
   bool enableAttitude_;
   bool noFeedbackToRovio_;
   bool doInertialAlignmentAtStart_;
   bool didAlignment_;
-  PoseUpdate(){
+  bool useOdometryPoseCov_;
+  PoseUpdate() : defaultUpdnoiP_((int)(mtNoise::D_),(int)(mtNoise::D_)) {
     static_assert(mtState::nPose_>inertialPoseIndex_,"Please add enough poses to the filter state (templated).");
     static_assert(mtState::nPose_>bodyPoseIndex_,"Please add enough poses to the filter state (templated).");
     qVM_.setIdentity();
@@ -157,6 +168,7 @@ class PoseUpdate: public LWF::Update<PoseInnovation,FILTERSTATE,PoseUpdateMeas,P
     noFeedbackToRovio_ = true;
     doInertialAlignmentAtStart_ = true;
     didAlignment_ = false;
+    useOdometryPoseCov_ = false;
     doubleRegister_.registerVector("MrMV",MrMV_);
     doubleRegister_.registerQuaternion("qVM",qVM_);
     doubleRegister_.registerVector("IrIW",IrIW_);
@@ -171,6 +183,16 @@ class PoseUpdate: public LWF::Update<PoseInnovation,FILTERSTATE,PoseUpdateMeas,P
     boolRegister_.registerScalar("enableAttitude",enableAttitude_);
     boolRegister_.registerScalar("noFeedbackToRovio",noFeedbackToRovio_);
     boolRegister_.registerScalar("doInertialAlignmentAtStart",doInertialAlignmentAtStart_);
+    boolRegister_.registerScalar("useOdometryPoseCov",useOdometryPoseCov_);
+
+    // Unregister configured covariance
+    for (int i=0;i<6;i++) {
+      doubleRegister_.removeScalarByVar(updnoiP_(i,i));
+    }
+    // Register configured covariance again under a different name
+    mtNoise n;
+    n.setIdentity();
+    n.registerCovarianceToPropertyHandler_(defaultUpdnoiP_,this,"UpdateNoise.");
   }
   virtual ~PoseUpdate(){}
   const V3D& get_IrIW(const mtState& state) const{
@@ -273,6 +295,16 @@ class PoseUpdate: public LWF::Update<PoseInnovation,FILTERSTATE,PoseUpdateMeas,P
       }
       didAlignment_ = true;
     }
+    // When enabled, scale the configured position covariance by the values in the measurement
+    if(useOdometryPoseCov_){
+      updnoiP_ = defaultUpdnoiP_;
+      updnoiP_.template block<3,3>(0,0) *= meas.pos_cov();
+    } else {
+      updnoiP_ = defaultUpdnoiP_;
+    }
+    /* std::cout << "Default\n" << defaultUpdnoiP_ << "\n\n"
+              << "Meas\n" << meas.pos_cov() << "\n\n"
+              << "Scaled (" << useOdometryPoseCov_ << ")\n" << updnoiP_ << "\n\n"; */
   }
   void postProcess(mtFilterState& filterstate, const mtMeas& meas, const mtOutlierDetection& outlierDetection, bool& isFinished){
     mtState& state = filterstate.state_;

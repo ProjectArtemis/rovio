@@ -29,8 +29,10 @@
 #ifndef ROVIO_ROVIONODE_HPP_
 #define ROVIO_ROVIONODE_HPP_
 
-#include <queue>
 #include <memory>
+#include <mutex>
+#include <queue>
+
 #include <ros/ros.h>
 #include <geometry_msgs/TransformStamped.h>
 #include <geometry_msgs/PoseWithCovarianceStamped.h>
@@ -85,6 +87,7 @@ class RovioNode{
   ros::Subscriber subImg1_;
   ros::Subscriber subGroundtruth_;
   ros::Subscriber subMag_;
+  ros::Subscriber subGpsOdometry_;
   ros::Publisher pubOdometry_;
   ros::Publisher pubPath_;
   ros::Publisher pubTransform_;
@@ -148,15 +151,16 @@ class RovioNode{
     receivedInitialYaw_ = false;
 
     // Subscribe topics
-    subImu_ = nh_.subscribe("imu0", 1000, &RovioNode::imuCallback,this);
+    subImu_ = nh_.subscribe("/mavros/estimator_bridge/raw_imu", 1000, &RovioNode::imuCallback,this);
+    subMag_ = nh_.subscribe("/mavros/estimator_bridge/global_orientation", 1000, &RovioNode::magCallback,this);
+    subGpsOdometry_ = nh_.subscribe("/mavros/estimator_bridge/raw_gps", 1000, &RovioNode::gpsOdometryCallback, this);
     subImg0_ = nh_.subscribe("cam0/image_raw", 1000, &RovioNode::imgCallback0,this);
     subImg1_ = nh_.subscribe("cam1/image_raw", 1000, &RovioNode::imgCallback1,this);
     subGroundtruth_ = nh_.subscribe("pose", 1000, &RovioNode::groundtruthCallback,this);
-    subMag_ = nh_.subscribe("mag_imu", 1000, &RovioNode::magCallback,this);
 
     // Advertise topics
+    pubOdometry_ = nh_.advertise<nav_msgs::Odometry>("/mavros/estimator_bridge/vio_estimate", 1);
     pubTransform_ = nh_.advertise<geometry_msgs::TransformStamped>("rovio/transform", 1);
-    pubOdometry_ = nh_.advertise<nav_msgs::Odometry>("rovio/odometry", 1);
     pubPath_ = nh_.advertise<nav_msgs::Path>("rovio/trajectory", 1);
     pubPcl_ = nh_.advertise<sensor_msgs::PointCloud2>("rovio/pcl", 1);
     pubURays_ = nh_.advertise<visualization_msgs::Marker>("rovio/urays", 1 );
@@ -420,7 +424,7 @@ class RovioNode{
     }
   }
 
-  /** \brief Groundtruth callback for external groundtruth
+  /** \brief Callback for external groundtruth as TransformStamped
    *
    *  @param transform - Groundtruth message.
    */
@@ -436,6 +440,26 @@ class RovioNode{
   void magCallback(const sensor_msgs::Imu::ConstPtr& imu_msg){
     initialGlobalOrientation_ = QPD(imu_msg->orientation.w, imu_msg->orientation.x, imu_msg->orientation.y, imu_msg->orientation.z);
     receivedInitialYaw_ = true;
+  }
+  
+  /** \brief Callback for GPS data as Odometry
+   *
+   * @param odometry - Groundtruth message.
+   */
+  void gpsOdometryCallback(const nav_msgs::Odometry::ConstPtr& odometry) {
+    if(isInitialized_) {
+      Eigen::Vector3d JrJV(odometry->pose.pose.position.x,odometry->pose.pose.position.y,odometry->pose.pose.position.z);
+      poseUpdateMeas_.pos() = JrJV;
+      
+      QPD qJV(odometry->pose.pose.orientation.w,odometry->pose.pose.orientation.x,odometry->pose.pose.orientation.y,odometry->pose.pose.orientation.z);
+      poseUpdateMeas_.att() = qJV.inverted();
+
+      const Eigen::Matrix<double,6,6> full_cov = Eigen::Map<const Eigen::Matrix<double,6,6,Eigen::RowMajor>>(odometry->pose.covariance.data());
+      poseUpdateMeas_.pos_cov() = full_cov.template block<3,3>(0, 0);
+
+      mpFilter_->template addUpdateMeas<1>(poseUpdateMeas_,odometry->header.stamp.toSec()+mpPoseUpdate_->timeOffset_);
+      updateAndPublish();
+    }
   }
 
   /** \brief Executes the update step of the filter and publishes the updated data.

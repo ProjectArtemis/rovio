@@ -196,6 +196,7 @@ PoseUpdate
     qVM_y 0;									Y-entry of quaterion representing IMU to reference body coordinate frame of pose measurement (JPL)
     qVM_z 0;									Z-entry of quaterion representing IMU to reference body coordinate frame of pose measurement (JPL)
     qVM_w 1;									W-entry of quaterion representing IMU to reference body coordinate frame of pose measurement (JPL)
+    useOdometryPoseCov false;                    				Should the UpdateNoise position covariance be scaled using the covariance in the Odometry message
     MrMV_x 0;									X-entry of vector representing IMU to reference body coordinate frame of pose measurement
     MrMV_y 0;									Y-entry of vector representing IMU to reference body coordinate frame of pose measurement
     MrMV_z 0;									Z-entry of vector representing IMU to reference body coordinate frame of pose measurement
